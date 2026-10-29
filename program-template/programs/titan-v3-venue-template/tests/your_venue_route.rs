@@ -1,28 +1,38 @@
-//! Your venue's swap-route test — the same end-to-end suite the example passes,
-//! run against `YourVenue`. Red once you've implemented YourVenue and pointed the
-//! config below at a real pool + program (with SOLANA_RPC_URL set and the route
-//! program built); SKIPs cleanly until then.
+//! Neutral bundle swap-route test — the same end-to-end suite the example
+//! passes, run against `NeutralBundleVenue`. SKIPs cleanly until SOLANA_RPC_URL,
+//! the built route program, and `NEUTRAL_TEST_BUNDLE` (a mainnet bundle with a
+//! tokenized depositor) are all available.
 
 mod common;
 
-use common::{RouteConfig, run_swap_route};
+use common::{run_swap_route, RouteConfig};
 use solana_pubkey::Pubkey;
-use titan_integration_template::your_venue::YourVenue;
+use titan_integration_template::your_venue::{NeutralBundleVenue, NEUTRAL_BUNDLE_PROGRAM_ID};
 
-fn pool() -> Pubkey {
-    // FILL_IN: a real pool/market account for your venue to route through.
-    todo!("set your_venue_route.rs pool to a real pool or market account")
+fn pool() -> Option<Pubkey> {
+    let Ok(bundle) = std::env::var("NEUTRAL_TEST_BUNDLE") else {
+        eprintln!(
+            "SKIP swap_route_both_directions: set NEUTRAL_TEST_BUNDLE to a bundle with a \
+             tokenized depositor"
+        );
+        return None;
+    };
+    Some(
+        bundle
+            .parse()
+            .expect("NEUTRAL_TEST_BUNDLE must be a base58 pubkey"),
+    )
 }
 
 fn venue_programs() -> Vec<Pubkey> {
-    // FILL_IN: your venue's program(s) the swap CPI invokes.
-    todo!("set your_venue_route.rs venue_programs to your route CPI dependencies")
+    vec![NEUTRAL_BUNDLE_PROGRAM_ID]
 }
 
 #[tokio::test]
 async fn swap_route_both_directions() {
-    run_swap_route::<YourVenue>(RouteConfig {
-        pool: pool(),
+    let Some(pool) = pool() else { return };
+    run_swap_route::<NeutralBundleVenue>(RouteConfig {
+        pool,
         venue_programs: venue_programs(),
     })
     .await;

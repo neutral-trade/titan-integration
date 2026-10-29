@@ -22,6 +22,8 @@ cpi = ["no-entrypoint"]
 default = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 swap-logging = []
+# Target the ntbundle devnet deployment instead of mainnet.
+devnet = ["titan-integration-template/devnet"]
 
 [dependencies]
 anchor-lang = "0.31.1"

@@ -3,6 +3,10 @@ name = "titan-integration-template"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+# Target the ntbundle devnet deployment instead of mainnet.
+devnet = []
+
 [dependencies]
 arrayref = "0.3.6"
 bytemuck = { version = "1.22", features = ["derive"] }

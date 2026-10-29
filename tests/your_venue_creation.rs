@@ -1,56 +1,75 @@
-//! Your venue's venue-creation parsing test.
+//! Neutral bundle venue-creation parsing test.
 //!
-//! Fill this in with a self-contained fixture for your venue's pool-creation
-//! instruction. It should mirror `tests/venue_creation.rs`: no RPC, no network,
-//! just the decompiled instruction shape that your parser must recognize.
+//! A bundle becomes routable when its manager runs
+//! `initialize_tokenized_bundle_depositor`. The fixture uses the real mainnet
+//! LighterLP-USDC bundle, its USDC asset, and the receipt mint PDA that
+//! instruction would create (`[b"TOKENIZED_BUNDLE_MINT", bundle]`). Those PDAs
+//! are mainnet-specific, so the fixture is skipped under the `devnet` feature.
+#![cfg(not(feature = "devnet"))]
 
 use solana_pubkey::{Pubkey, pubkey};
 
 use titan_integration_template::trading_venue::protocol::PoolProtocol;
 use titan_integration_template::trading_venue::venue_creation::{ParsedInstruction, PoolCreation};
-use titan_integration_template::your_venue::{YOUR_PROGRAM_ID, parse_pool_creations};
+use titan_integration_template::your_venue::{
+    INITIALIZE_TOKENIZED_BUNDLE_DEPOSITOR_DISCRIMINATOR, NEUTRAL_BUNDLE_PROGRAM_ID,
+    parse_pool_creations,
+};
 
-// FILL_IN: replace with a real pool address created by your fixture instruction.
-const POOL: Pubkey = pubkey!("11111111111111111111111111111111");
-// FILL_IN: replace with the first tradable mint from the new pool.
-const TOKEN_A_MINT: Pubkey = pubkey!("11111111111111111111111111111111");
-// FILL_IN: replace with the second tradable mint from the new pool.
-const TOKEN_B_MINT: Pubkey = pubkey!("11111111111111111111111111111111");
-
-fn require_fixture_constants_replaced() {
-    if POOL == Pubkey::default() {
-        todo!("replace POOL with a real pool address created by your fixture")
-    }
-    if TOKEN_A_MINT == Pubkey::default() || TOKEN_B_MINT == Pubkey::default() {
-        todo!("replace TOKEN_A_MINT and TOKEN_B_MINT with real tradable mints")
-    }
-}
+const MANAGER: Pubkey = pubkey!("2VYioVd8gaE1Zp1sMbo1u48pSLSnBsX6da4xxQs1MAMp");
+const POOL: Pubkey = pubkey!("dvsWTBqogw1cou8ducadzc3YCmUssjrrio8LmMtNWmz");
+const TOKENIZED_DEPOSITOR: Pubkey = pubkey!("138JQCARRWDbbnRAVGgvY4s5GrAQqj64MekWWkLrxwVb");
+const TOKEN_AUTHORITY: Pubkey = pubkey!("91zS1gTwYPVBzF1WRQMqruJ68UBPA2bRQMSCfDbsv9Em");
+/// USDC, the bundle asset.
+const TOKEN_A_MINT: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+/// The bundle receipt-token mint.
+const TOKEN_B_MINT: Pubkey = pubkey!("8WjBC4GzAbpXTg2purATvgGmjJZDtBaoVaMdwJnBBfEt");
 
 fn your_venue_pool_creation() -> ParsedInstruction {
-    // FILL_IN: build your venue's real pool-creation instruction fixture.
-    // Match the program id, discriminator, account order, and data layout your
-    // parser expects. Include the new pool and mint accounts at their real
-    // instruction positions.
-    todo!("build YourVenue pool-creation instruction fixture")
+    let mut data = INITIALIZE_TOKENIZED_BUNDLE_DEPOSITOR_DISCRIMINATOR.to_vec();
+    data.push(6); // decimals
+    ParsedInstruction {
+        program_id: NEUTRAL_BUNDLE_PROGRAM_ID,
+        accounts: vec![
+            MANAGER,
+            POOL,
+            TOKEN_A_MINT,
+            TOKENIZED_DEPOSITOR,
+            TOKEN_AUTHORITY,
+            TOKEN_B_MINT,
+            spl_token::ID,
+            solana_program::system_program::ID,
+        ],
+        data,
+    }
 }
 
 fn unrelated_instruction() -> ParsedInstruction {
     ParsedInstruction {
-        program_id: YOUR_PROGRAM_ID,
+        program_id: NEUTRAL_BUNDLE_PROGRAM_ID,
         accounts: vec![],
         data: vec![],
     }
 }
 
 #[test]
+fn fixture_pdas_match_the_bundle() {
+    let pda = |seed: &[u8]| {
+        Pubkey::find_program_address(&[seed, POOL.as_ref()], &NEUTRAL_BUNDLE_PROGRAM_ID).0
+    };
+    assert_eq!(pda(b"TOKENIZED_BUNDLE_DEPOSITOR"), TOKENIZED_DEPOSITOR);
+    assert_eq!(pda(b"TOKENIZED_BUNDLE_TOKEN_AUTHORITY"), TOKEN_AUTHORITY);
+    assert_eq!(pda(b"TOKENIZED_BUNDLE_MINT"), TOKEN_B_MINT);
+}
+
+#[test]
 fn parses_your_venue_pool_creation() {
-    require_fixture_constants_replaced();
     let creations = parse_pool_creations(&[your_venue_pool_creation()]);
 
     assert_eq!(
         creations,
         vec![PoolCreation {
-            protocol: PoolProtocol::YourPoolProtocol,
+            protocol: PoolProtocol::NeutralBundle,
             pool: POOL,
             mints: vec![TOKEN_A_MINT, TOKEN_B_MINT],
         }],

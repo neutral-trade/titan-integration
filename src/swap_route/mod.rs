@@ -49,15 +49,9 @@ pub const ROUTE_WEIGHT_ALL: u32 = 1_000_000_000;
 #[derive(BorshSerialize, BorshDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Venue {
     RaydiumAmm,
-    // FILL_IN: add your venue variant here, in the SAME position as in
-    // `state.rs`. Include any CPI parameters the router must pass to your venue
-    // adapter, such as direction flags.
-    TemplateVenue { zero_for_one: bool },
-}
-
-#[allow(dead_code)]
-fn fill_in_route_venue_variant() -> ! {
-    todo!("add your route Venue variant in the same position as the program enum")
+    /// Neutral bundle instant mint (asset -> receipt token). The only routable
+    /// direction, so it carries no CPI parameters.
+    NeutralBundle,
 }
 
 impl Venue {
@@ -96,10 +90,15 @@ pub fn protocol_to_venue(
 ) -> Result<Venue, TradingVenueError> {
     match venue.protocol() {
         PoolProtocol::RaydiumAMM => Ok(Venue::RaydiumAmm),
-        // FILL_IN: map your PoolProtocol variant to your Venue variant.
-        PoolProtocol::YourPoolProtocol => {
-            let _ = (venue, request);
-            todo!("map YourPoolProtocol to your Venue variant")
+        PoolProtocol::NeutralBundle => {
+            // Only asset (token 0) -> receipt token (token 1) is executable;
+            // reject anything else rather than build a leg that reverts.
+            if request.input_mint != venue.get_token(0)?.pubkey
+                || request.output_mint != venue.get_token(1)?.pubkey
+            {
+                return Err(TradingVenueError::InvalidMint(request.input_mint.into()));
+            }
+            Ok(Venue::NeutralBundle)
         }
     }
 }
@@ -341,16 +340,6 @@ mod tests {
     #[test]
     fn venue_borsh_bytes_are_stable() {
         assert_eq!(Venue::RaydiumAmm.to_borsh_bytes(), vec![0]);
-        assert_eq!(
-            Venue::TemplateVenue {
-                zero_for_one: false,
-            }
-            .to_borsh_bytes(),
-            vec![1, 0]
-        );
-        assert_eq!(
-            Venue::TemplateVenue { zero_for_one: true }.to_borsh_bytes(),
-            vec![1, 1]
-        );
+        assert_eq!(Venue::NeutralBundle.to_borsh_bytes(), vec![1]);
     }
 }

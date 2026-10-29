@@ -3,7 +3,8 @@
 #   make build-program   run anchor build for the route program
 #   make check-structure lib tests + scorecard assertion + enum parity
 #   make test-example   reference (Raydium) suite — must be green / skipped
-#   make test-venue      YOUR venue's suite (red until you implement YourVenue)
+#   make test-venue      Neutral bundle suite (needs NEUTRAL_TEST_BUNDLE too)
+#   make test-venue-devnet  Neutral bundle suite against the devnet deployment
 #   make scorecard       print the integration scorecard only
 #   make dump-programs   fetch the on-chain program binaries the sim tests load
 #
@@ -22,7 +23,14 @@
 RAYDIUM := 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
 SPL_CALC_1 := sspUE1vrh7xRoXxGsg7vR1zde2WdGtJRbyK9uRumBDy
 SPL_CALC_2 := ssmbu3KZxgonUtjEMCKspZzxvUQCxAFnyh1rcHUeEDo
-PROGRAMS := $(RAYDIUM) $(SPL_CALC_1) $(SPL_CALC_2)
+NTBUNDLE := BUNDDh4P5XviMm1f3gCvnq2qKx6TGosAGnoUK12e7cXU
+NTBUNDLE_DEVNET := CcR9whVnaW3STx6LLYotwy5JJXmnC8KDjtRotA3NCL8v
+# Devnet bundle with a tokenized depositor (instant mint is not on mainnet yet).
+NTBUNDLE_DEVNET_BUNDLE := 8TqrZmyiWQ3F3WysiBaBQC1Nzj1LDn5AR7JjXBYzFxxQ
+DEVNET_URL := https://api.devnet.solana.com
+# Cargo feature flags for the venue phase; `test-venue-devnet` sets `--features devnet`.
+FEATURES :=
+PROGRAMS := $(RAYDIUM) $(SPL_CALC_1) $(SPL_CALC_2) $(NTBUNDLE)
 
 DUMP_URL := $(if $(SOLANA_RPC_URL),$(SOLANA_RPC_URL),m)
 
@@ -32,7 +40,7 @@ RELEASE_PROFILE := --release
 ASSERT_PROFILE := --profile release-debug
 SCORECARD = cargo test --quiet $(RELEASE_PROFILE) --test scorecard -- --nocapture 2>/dev/null | sed -n '/^====/,/^====/p'
 
-.PHONY: build-program check-structure test-example test-venue scorecard dump-programs \
+.PHONY: build-program check-structure test-example test-venue test-venue-devnet scorecard dump-programs \
         _unit-phase _example-sim-phase _venue-phase
 
 # --- always-on checks (no RPC): unit tests, scorecard assertion, enum parity ---
@@ -82,16 +90,16 @@ _venue-phase:
 	@printf '  %-24s  %-8s  %s\n' 'Check' 'Status' 'Detail'
 	@printf '  %-24s  %-8s  %s\n' '------------------------' '--------' '----------------------------------------'
 	@log=target/log-venue-off.txt; \
-		cargo test --quiet $(RELEASE_PROFILE) --test your_venue -- --skip construction --nocapture >$$log 2>&1; rc1=$$?; \
-		cargo test --quiet $(ASSERT_PROFILE) --test your_venue -- construction --nocapture >>$$log 2>&1; rc2=$$?; \
-		cargo test --quiet $(RELEASE_PROFILE) --test your_venue_creation -- --nocapture >>$$log 2>&1; rc3=$$?; \
-		if [ $$rc1 -ne 0 ] || [ $$rc2 -ne 0 ] || [ $$rc3 -ne 0 ]; then st=red; dt='implement src/your_venue/mod.rs + tests/your_venue_creation.rs'; \
-		elif grep -q 'SKIP' $$log; then st=skipped; dt='set SOLANA_RPC_URL'; \
+		cargo test --quiet $(RELEASE_PROFILE) $(FEATURES) --test your_venue -- --skip construction --nocapture >$$log 2>&1; rc1=$$?; \
+		cargo test --quiet $(ASSERT_PROFILE) $(FEATURES) --test your_venue -- construction --nocapture >>$$log 2>&1; rc2=$$?; \
+		cargo test --quiet $(RELEASE_PROFILE) $(FEATURES) --test your_venue_creation -- --nocapture >>$$log 2>&1; rc3=$$?; \
+		if [ $$rc1 -ne 0 ] || [ $$rc2 -ne 0 ] || [ $$rc3 -ne 0 ]; then st=red; dt='see target/log-venue-off.txt'; \
+		elif grep -q 'SKIP' $$log; then st=skipped; dt='set SOLANA_RPC_URL + NEUTRAL_TEST_BUNDLE'; \
 		else st=ok; dt='venue suite passed'; fi; \
 		printf '  %-24s  %-8s  %s\n' 'Off-chain' "$$st" "$$dt"
 	@log=target/log-venue-prog.txt; \
-		cargo test --quiet $(PROGRAM) --release --test your_venue_route -- --nocapture >$$log 2>&1; rc=$$?; \
-		if [ $$rc -ne 0 ]; then st=red; dt='implement YourVenue + your program venue module'; \
+		cargo test --quiet $(PROGRAM) --release $(FEATURES) --test your_venue_route -- --nocapture >$$log 2>&1; rc=$$?; \
+		if [ $$rc -ne 0 ]; then st=red; dt='see target/log-venue-prog.txt'; \
 		elif grep -q 'SKIP' $$log; then st=skipped; dt='needs fresh anchor build + RPC + dumps'; \
 		else st=ok; dt='route suite passed'; fi; \
 		printf '  %-24s  %-8s  %s\n' 'On-chain program' "$$st" "$$dt"
@@ -109,6 +117,16 @@ test-example: _example-sim-phase
 test-venue: _venue-phase
 	@echo
 	@SCORECARD_SECTION=venue $(SCORECARD)
+
+# Runs the venue suite against ntbundle's devnet deployment, then rebuilds the
+# route program for mainnet so a devnet build is never mistaken for a fresh one.
+test-venue-devnet:
+	@mkdir -p programs
+	@[ -f programs/$(NTBUNDLE_DEVNET).so ] || solana program dump -u $(DEVNET_URL) $(NTBUNDLE_DEVNET) programs/$(NTBUNDLE_DEVNET).so
+	@cd program-template && anchor build -- --features devnet >/dev/null 2>&1
+	@$(MAKE) --no-print-directory _venue-phase FEATURES='--features devnet' \
+		SOLANA_RPC_URL=$(DEVNET_URL) NEUTRAL_TEST_BUNDLE=$(NTBUNDLE_DEVNET_BUNDLE); \
+		rc=$$?; cd program-template && anchor build >/dev/null 2>&1; exit $$rc
 
 scorecard:
 	@SCORECARD_SECTION=both $(SCORECARD)
