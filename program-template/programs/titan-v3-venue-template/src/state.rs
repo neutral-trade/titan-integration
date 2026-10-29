@@ -6,9 +6,8 @@ pub const MAX_MINTS: usize = 12;
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Copy, Eq, Debug)]
 pub enum Venue {
     RaydiumAmm,
-    // FILL_IN: add your venue variant here. Include any CPI parameters the
-    // router must pass to your venue adapter, such as direction flags.
-    TemplateVenue { zero_for_one: bool },
+    /// Neutral bundle instant mint (asset -> receipt token).
+    NeutralBundle,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Copy, Eq, Debug)]
